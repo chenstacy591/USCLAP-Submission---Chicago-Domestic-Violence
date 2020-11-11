@@ -1,0 +1,460 @@
+---
+title: "Safer at Home? Domestic Violence in Chicago During the Pandemic"
+output: pdf_document
+---
+
+## ABSTRACT
+Public health news outlets during the COVID-19 pandemic have led citizens to believe that they are safer at home, which could not be further from the truth for victims of domestic abuse. In order to assess the impact of lockdown orders on domestic violence, we analyzed crime data from the Chicago Police Department, tracing the proportion domestic violence cases through the city’s 6 phases of coronavirus response (BEFORE COVID-19, BEFORE LOCKDOWN, LOCKDOWN, PHASE 2, PHASE 3, and PHASE 4). Findings from our statistical tests (chi-square test of independence and 2 sample step-down tests of proportion) and logistic regression model indicate that the proportion of domestic violence cases and likelihood of a reported crime being related to domestic violence increased with the onset of strict quarantine measures. We anticipate studies like this one to help policy makers better assess and mitigate domestic violence risks in unforeseen community crises.
+\newpage
+
+## INTRODUCTION AND DATA
+In what has been dubbed “a pandemic within a pandemic,” a new public health crisis has emerged in the wake of the coronavirus - increasing rates of domestic violence [1]. Through our analyses, we hope to investigate how the different phases of lockdown and reopening affected the proportion of crimes that were reported as domestic violence in the City of Chicago.
+
+We pulled existing data from the Chicago Police Department's CLEAR (Citizen Law Enforcement Analysis and Reporting) system, which contains all reported incidents of crime (n=231,002) that occurred in the city of Chicago from July 10, 2019 to July 8, 2020 [2]. Since the majority of domestic violence cases go unreported, we will use these reported cases as a proxy for the true proportion of crimes that were related to domestic violence [3]. The following timestamps were used to stratify our data into 6 phases: 
+BEFORE COVID-19, BEFORE LOCKDOWN, LOCKDOWN, PHASE 2, PHASE 3, and PHASE 4. (See phases description and date divisions in Appendix A). 
+Based on our background research, we hypothesize that there will be a spike in domestic violence at the beginning of lockdown followed by a gradual decrease through the reopening phases. We will analyze the validity of our hypotheses using a Chi-square test, any necessary step-down tests, and a logistic regression model.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message=F, warning=F)
+domvio <- read.csv("data/chicago.csv")
+library(tidyverse)
+```
+
+```{r mutate original data to make month day year variables}
+domvio<-domvio %>%
+  mutate(MONTH = substring(DATE..OF.OCCURRENCE, 0, 2)) %>% 
+  mutate(DAY = substring(DATE..OF.OCCURRENCE, 4,5)) %>% 
+  mutate(YEAR = substring(DATE..OF.OCCURRENCE, 7,10)) %>%
+  mutate(DATEINT = as.integer(paste(YEAR, MONTH,sep=""))) %>%
+  mutate(MONTH = as.integer(substring(DATE..OF.OCCURRENCE, 0, 2))) %>% 
+  mutate(DAY = as.integer(substring(DATE..OF.OCCURRENCE, 4,5))) %>% 
+  mutate(YEAR = as.integer(substring(DATE..OF.OCCURRENCE, 7,10)))
+  
+domvio<-domvio %>% 
+  mutate(isPM = case_when(substring(DATE..OF.OCCURRENCE,21,22) == "AM" ~ 0,
+                          substring(DATE..OF.OCCURRENCE,21,22) == "PM" ~ 1))
+domvio<- domvio %>% 
+  mutate(HOUR = as.integer(substring(DATE..OF.OCCURRENCE, 12,13)))
+
+#here's what the data looks like
+#glimpse(domvio)
+```
+
+
+```{r making mutated dataset for new indicators}
+domvio_mut<-domvio
+```
+
+```{r beforecovid-indicator}
+#create an indicator for being before covid entirely
+#this indicator is "isbeforecovid" 2019/7/10-2020/1/24 
+domvio_mut<-domvio_mut %>%
+  mutate(isbeforecovid = case_when(
+    YEAR == 2019 ~ 1,
+    YEAR == 2020 & MONTH == 1 & DAY <=24 ~ 1,
+    YEAR == 2020 & MONTH == 1 & DAY > 24 ~ 0,
+    YEAR == 2020 & MONTH > 1 ~ 0,
+    ))
+```
+
+```{r beforelockdown-indicator}
+#create an indicator for being before lockdown (tho covid is in the USA)
+#this indicator is "isbeforelockdown" 2020/1/25-2020/3/21
+domvio_mut<-domvio_mut %>%
+  mutate(isbeforelockdown = case_when(
+    YEAR == 2019 ~ 0,
+    YEAR == 2020 & MONTH == 1 & DAY <=24 ~ 0,
+    YEAR == 2020 & MONTH == 1 & DAY > 24 ~ 1,
+    YEAR == 2020 & MONTH == 2  ~ 1, 
+    YEAR == 2020 & MONTH == 3 & DAY < 22 ~ 1,
+    YEAR == 2020 & MONTH == 3 & DAY >= 22 ~ 0,
+    YEAR == 2020 & MONTH > 3 ~ 0
+    ))
+```
+
+```{r lockdown-indicator}
+#create an indicator for being in the lockdown
+#this indicator is "islockdown" 2020/3/22-2020/4/30
+domvio_mut<-domvio_mut %>%
+  mutate(islockdown = case_when(
+    YEAR == 2019 ~ 0,
+    YEAR == 2020 & MONTH < 3 ~ 0, 
+    YEAR == 2020 & MONTH == 3 & DAY < 22 ~ 0,
+    YEAR == 2020 & MONTH == 3 & DAY >= 22 ~ 1,
+    YEAR == 2020 & MONTH == 4 ~ 1,
+    YEAR == 2020 & MONTH >= 5 ~ 0
+    ))
+```
+
+```{r phase2-indicator}
+#create an indicator for phase 2 in the recovery
+#this indicator is "isphase2" 2020/5/1-2020/6/2
+domvio_mut<-domvio_mut %>%
+  mutate(isphase2 = case_when(
+    YEAR == 2019 ~ 0,
+    YEAR == 2020 & MONTH < 5 ~ 0, 
+    YEAR == 2020 & MONTH == 5 ~ 1,
+    YEAR == 2020 & MONTH == 6 & DAY < 3 ~ 1,
+    YEAR == 2020 & MONTH == 6 & DAY >= 3 ~ 0,
+    YEAR == 2020 & MONTH >= 7 ~ 0
+    ))
+```
+
+```{r phase3-indicator}
+#create an indicator for phase 3 in the recovery
+#this indicator is "isphase3" 2020/6/3-2020/6/25
+domvio_mut<-domvio_mut %>%
+  mutate(isphase3 = case_when(
+    YEAR == 2019 ~ 0,
+    YEAR == 2020 & MONTH < 6 ~ 0, 
+    YEAR == 2020 & MONTH == 6 & DAY < 3 ~ 0,
+    YEAR == 2020 & MONTH == 6 & DAY >= 3 & DAY <= 25 ~ 1,
+    YEAR == 2020 & MONTH == 6 & DAY > 25 ~ 0,
+    YEAR == 2020 & MONTH >= 7 ~ 0
+    ))
+```
+
+```{r phase4-indicator}
+#create an indicator for phase 4 in the recovery
+#this indicator is "isphase4" 2020/6/26-2020/7/8 (last day on dataset)
+domvio_mut<-domvio_mut %>%
+  mutate(isphase4 = case_when(
+    YEAR == 2019 ~ 0,
+    YEAR == 2020 & MONTH < 6 ~ 0, 
+    YEAR == 2020 & MONTH == 6 & DAY < 26 ~ 0,
+    YEAR == 2020 & MONTH == 6 & DAY >= 26 ~ 1,
+    YEAR == 2020 & MONTH >= 7 ~ 1
+    ))
+```
+
+```{r domvio-indicator}
+#find which secondary description labels are domestic violence
+domvio_cat<-domvio_mut %>%
+  group_by(SECONDARY.DESCRIPTION) %>%
+  summarise(n=n())
+
+#create an indicator for cases of dom violence
+#this indicator is "isdomviolence"
+domvio_mut<-domvio_mut %>%
+  mutate(isdomviolence = case_when(
+    SECONDARY.DESCRIPTION == "VIOLATION OF BAIL BOND - DOMESTIC VIOLENCE" |
+    SECONDARY.DESCRIPTION == "DOMESTIC BATTERY SIMPLE" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY: OTHER DANGEROUS WEAPON" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY: OTHER DANG WEAPON" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY: KNIFE/CUTTING INST" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY: KNIFE / CUTTING INSTSTRUMENT" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY: HANDS/FIST/FEET SERIOUS INJURY" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY: HANDGUN" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY - OTHER FIREARM" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY - OTHER DANGEROUS WEAPON" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY - KNIFE / CUTTING INSTRUMENT" |
+    SECONDARY.DESCRIPTION == "AGGRAVATED DOMESTIC BATTERY - HANDGUN" |
+    SECONDARY.DESCRIPTION == "AGG. DOMESTIC BATTERY - HANDS, FISTS, FEET, SERIOUS INJURY" ~ 1,
+    SECONDARY.DESCRIPTION != "VIOLATION OF BAIL BOND - DOMESTIC VIOLENCE" &
+    SECONDARY.DESCRIPTION != "DOMESTIC BATTERY SIMPLE" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY: OTHER DANGEROUS WEAPON" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY: OTHER DANG WEAPON" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY: KNIFE/CUTTING INST" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY: KNIFE / CUTTING INSTSTRUMENT" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY: HANDS/FIST/FEET SERIOUS INJURY" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY: HANDGUN" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY - OTHER FIREARM" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY - OTHER DANGEROUS WEAPON" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY - KNIFE / CUTTING INSTRUMENT" &
+    SECONDARY.DESCRIPTION != "AGGRAVATED DOMESTIC BATTERY - HANDGUN" &
+    SECONDARY.DESCRIPTION != "AGG. DOMESTIC BATTERY - HANDS, FISTS, FEET, SERIOUS INJURY" ~ 0
+    ))
+```
+
+```{r indicator time being in the 9am-5pm period}
+domvio_mut <-domvio_mut %>%
+  mutate(is9_5 = case_when(
+    isPM == 0 & HOUR <= 8 | HOUR == 12 ~0,
+    isPM == 0 & HOUR > 8 & HOUR !=12 ~ 1,
+    isPM == 1 & HOUR <6 | HOUR ==12 ~ 1,
+    isPM == 1 & HOUR >=6 & HOUR != 12 ~ 0
+  ))
+```
+
+```{r creating PERIOD indicators that shows before covid, during lockdown, and phase 3 together}
+domvio_mut<-domvio_mut %>% 
+  mutate(PERIOD = case_when(isbeforecovid == 1 ~ "pre",
+                                         isbeforelockdown == 1 ~ "pre",
+                                         islockdown == 1 ~ "during",
+                                         isphase2 == 1 ~ "during",
+                                         isphase3 == 1 ~ "post",
+                                         isphase4 == 1 ~ "post"
+                                         ) )
+```
+
+```{r just to see cases-per-covidphase}
+# #number of observations during in 2020 before covid=140697
+# domvio_mut %>% 
+#   count (isbeforecovid)
+# 
+# #number of observations during beforelockdown=34619
+# domvio_mut %>% 
+#   count (isbeforelockdown)
+# 
+# #number of observations during lockdown=16842
+# domvio_mut %>% 
+#   count (islockdown)
+# 
+# #number of observations during p2=18578
+# domvio_mut %>% 
+#   count (isphase2)
+# 
+# #number of observations during p3=12722
+# domvio_mut %>% 
+#   count (isphase3)
+# 
+# #number of observations during p4=7544
+# domvio_mut %>% 
+#   count(isphase4)
+# 
+# #number of cases of domestic violence=24897
+# domvio_mut %>% 
+#   count(isdomviolence)
+```
+
+``` {r just to see cases-per-day-or-month}
+# #see number of cases of domestic violence on a given day
+# domvio_mut %>% 
+#   filter(YEAR==2019) %>% 
+#   filter(MONTH==7) %>% 
+#   filter(DAY==9) %>% 
+#   count(isdomviolence)
+
+# #observations of domestic violence in a given month
+# domvio_mut %>% 
+#   filter(YEAR==2019) %>% 
+#   filter(MONTH==07) %>%
+#   count(isdomviolence)
+```
+
+## METHODOLOGY
+To visualize the fluctuations in domestic violence cases, we first plotted the daily number of total crime cases and those reported as domestic violence in the past year^[The dramatic spike in graph 2 (May 31st) can be explained by the extraordinary number of non-domestic violence crimes related to the Black Lives Matter protests over the murder of George Floyd in Chicago, which overshadowed domestic violence cases [8].].
+
+```{r crime and domestic violence cases each day over the whole period}
+
+domvio<-domvio %>%
+  mutate(MONTH = substring(DATE..OF.OCCURRENCE, 0, 2)) %>% 
+  mutate(DAY = substring(DATE..OF.OCCURRENCE, 4,5)) %>% 
+  mutate(YEAR = substring(DATE..OF.OCCURRENCE, 7,10)) %>%
+  mutate(YMD = as.integer(paste(YEAR,MONTH,DAY,sep="")))
+
+domvio_perday<-as.data.frame(table(domvio$YMD, domvio_mut$isdomviolence))
+
+domvio_1<-domvio_perday %>%
+  filter (Var2 == 1) %>%
+  pull()
+
+domvio_perday<-domvio_perday %>% 
+  mutate(YMD=Var1) %>% 
+  mutate(YMD=as.integer(as.character(YMD))) %>% 
+  mutate(period_indicator = case_when( YMD < 20200124 ~"before_covid",
+                                       YMD >= 20200124 & YMD < 20200322~"before-lockdown",
+                                       YMD >= 20200322 & YMD < 20200501~"lockdown",
+                                       YMD >= 20200501 & YMD < 20200603~"phase 2",
+                                       YMD >= 20200603 & YMD < 20200626~"phase 3",
+                                       YMD >=20200626 ~"phase 4"
+                                       
+  ))
+
+
+domvio_perday<-domvio_perday %>%
+  mutate (NONDOMVIO = Freq) %>%
+  filter (Var2 == 0) %>%
+  mutate (DOMVIOCASES = domvio_1) %>%
+  select (-Var2, -Freq) %>%
+  mutate (TOTCASES = DOMVIOCASES+NONDOMVIO) %>%
+  mutate (PROPDOMVIO = DOMVIOCASES/TOTCASES)
+
+ggplot(data = domvio_perday, mapping = aes(x = Var1, y = DOMVIOCASES, colour = period_indicator, group=1)) + geom_line()+ geom_point() +
+  labs(title = "# Daily domestic violence cases
+  remained relatively constant",
+       x = "MM/YYYY",
+       y = "daily cases") + expand_limits(x = 0, y = 0) + scale_x_discrete(breaks = c(20190901, 20191201,20200301, 20200601), label = c("09/2019", "12/2019", "03/2020", "06/2020")) + theme(plot.margin = unit(c(4,0,0,9),"cm"), legend.position = "none")
+
+ggplot(data = domvio_perday, mapping = aes(x = Var1, y = TOTCASES, colour = period_indicator, group=1)) + geom_line() + geom_point() + geom_label(x=200, y=1700, label="May 31st BLM protest", show.legend = F, color = "black") +
+  labs(title = "Total # daily crime cases dipped
+       at the onset of lockdown",
+       x = "MM/YYYY"
+       ) + expand_limits(x = 0, y = 0) + scale_x_discrete(breaks = c(20190901, 20191201,20200301, 20200601), label = c("09/2019", "12/2019", "03/2020", "06/2020")) + theme(plot.margin = unit(c(4,0,0,5),"cm"), axis.title.y=element_blank())
+```
+Next, we assessed whether the relationship between these fluctuations in the proportion of domestic violence cases and quarantine status was statistically significant. In order to simplify the analysis, we generalized the 6 phases of the pandemic into 3 periods: pre-lockdown (BEFORE COVID-19 and BEFORE LOCKDOWN), during lockdown (LOCKDOWN and PHASE 2), and post-lockdown (PHASE 3 and PHASE 4). Since there were enough independent observations in each period (n>10 for each cell) to satisfy the model assumptions, we conducted a chi-square test at the $\alpha$  = 0.05 significance level.
+
+```{r chisquared test}
+table(domvio_mut$isdomviolence, domvio_mut$PERIOD)
+chisq.test(table(domvio_mut$isdomviolence, domvio_mut$PERIOD))
+```
+
+Given the significant p-value of our chi-square test statistic, we also conducted three step-down 2 sample tests of proportion to identify any pairwise differences between periods (See Appendix B).
+
+Finally, we quantified the relationship with a logistic regression model, which models the relationship between the logit of the probability that a case was an incidence of domestic violence (a “success”) given the phase of the pandemic in which it occurred. In order to control for an expected increase in incidences of domestic violence outside of the 9-to-5 time period, our model included dummy variables for the time of the day as well as the phase during which the crime was reported. We hypothesized that a crime was more likely to be related to domestic violence if it occurred outside of the 9am to 5pm period and/or during the lockdown phases. See Appendix C for regression analysis output and predictor odd ratio confidence intervals.
+
+## RESULTS
+Both the Chi-square test and the step-down 2-proportion z-tests (p-values<0.001) suggest that the proportion of crime cases that were related to domestic violence in Chicago differs between each period of the pandemic. The last two pairwise comparisons (post lockdown vs. pre lockdown and during lockdown vs. pre lockdown) have respective positive 95% confidence intervals of (0.0245, 0.0343) and (0.0158, 0.0232), which suggests that the proportion of crime cases that were domestic violence has increased since issuance of stay-at-home orders. 
+
+Our fitted logistic regression model is as follows:
+
+$\hat{\beta}_0$ + $\hat{\beta}_1$ * (PHASE==before-lockdown) + $\hat{\beta}_2$ * (PHASE==lockdown) + $\hat{\beta}_3$ * (PHASE==phase2) + $\hat{\beta}_4$ * (PHASE==phase3) + $\hat{\beta}_5$ * (PHASE==phase4) + $\hat{\beta}_6$ * (is9_5)
+
+At the $\alpha$ = 0.05 significance level, the fitted $\hat{\beta}$ coefficients for each of our dummy variables relative to the baseline category of BEFORE COVID-19 were statistically significant. Therefore, there is sufficient evidence to suggest that the true slope corresponding to these predictors is not equal to 0. There is some relationship between the nature of the crime (i.e. domestic violence or not domestic violence) and the phase in which the crime occurred, as well as time of day, conditional on the other variables. 
+
+The estimated $\hat{\beta}_2$ coefficient was 0.303. Therefore, we would expect crimes reported during the lockdown phase to have ~1.354 times the odds of being related to domestic violence compared to cases that were reported before the COVID-19 pandemic hit Chicago, adjusting for time of day. This suggests that a reported crime was more likely to be related to domestic violence if it occurred during the lockdown. 
+The 95% confidence interval for the odds ratio corresponding to lockdown (exp($\beta_2$)) is greater than (and does not overlap with) that of before lockdown (exp($\beta_1$)), which suggests that compared to cases before COVID-19 hit Chicago, the odds of a crime committed during lockdown has greater times the odds of being related to domestic violence than one committed before lockdown, while adjusting for time of day. The same case can be made for phases 3 and 4. Interestingly, the 95% confidence interval for the odds ratio corresponding to phase 2 (exp($\beta_4$)) overlaps with that of before lockdown (exp($\beta_1$)). However, it is important to note that this dip in the odds ratio corresponding to phase 2 may be inaccurate because it includes the extraordinary spike of non-domestic violence cases on May 31st due to the BLM protests over the murder of George Floyd. If we ignore phase 2 as an outlier, we see that contrary to our hypothesis, the city’s gradual reopening did not decrease the likelihood of a crime being related to domestic violence to a statistically significant degree.
+
+## DISCUSSION
+As per our original hypothesis, there was indeed an increase in proportions of domestic violence cases over the phases of lockdown and reopening (p-value of < 0.001 for both the chi-square and step-down tests). We also found that when adjusting for time of day, the odds of a crime during lockdown being related to domestic violence was greater than that of a crime before the pandemic began, as evidenced by the statistically significant slope coefficient $\beta_2$ in the fitted logistic model. However, contrary to our predictions, we did not see a decrease in the odds of a crime being related to domestic violence during the later recovery periods, relative to before the pandemic (except for phase 2, which we classified as an outlier). Perhaps the reopening plan issued by Chicago authorities has not been impactful enough to bring domestic violence rates back down to “normal” relative to before the stay-at-home order was implemented. 
+
+Though our analyses show increases in the proportion and likelihood of reported domestic violence cases, we cannot conclude that this is a direct result of an actual rise in cases of domestic violence. Most likely, the decrease in total crime cases during the lockdown (as reported by some sources [9]) was more significant than the decrease in domestic violence cases, resulting in an increase in the proportion of domestic violence crimes. it might be worthwhile to conduct an ANOVA study in order to determine if the mean number of cases of domestic violence reported per day actually changed throughout the phases of the pandemic.
+Were we to repeat our analyses, we would adjust for more confounders to improve the prediction accuracy of our model, expand the population of interest, control for the abnormal spikes and dips in our data resulting from protests, and conduct research on whether police report data is actually reflective of the true number of domestic violence cases by examining other methods of reporting such as domestic violence hotlines. Finally, it would be interesting to follow rates of domestic violence for an extended time period after the immediate threat of the virus has passed, and we are left to deal with its long-lasting consequences.
+\newpage
+
+## REFERENCES
+[1] Taub, A. (2020, April 06). A New Covid-19 Crisis: Domestic Abuse Rises Worldwide. Retrieved from https://www.nytimes.com/2020/04/06/world/coronavirus-domestic-violence.html
+
+[2] Crimes - One year prior to present: City of Chicago: Data Portal. (2020, July 29). Retrieved from https://data.cityofchicago.org/Public-Safety/Crimes-One-year-prior-to-present/x2n5-8w5q
+
+[3] Gracia, E. (2004). Unreported cases of domestic violence against women: Towards an epidemiology of social silence, tolerance, and inhibition. Journal of Epidemiology & Community Health, 58(7), 536-537. doi:10.1136/jech.2003.019604
+
+[4] About COVID-19. (n.d.). Retrieved from https://dph.illinois.gov/topics-services/diseases-and-conditions/diseases-a-z-list/coronavirus/symptoms-treatment
+
+[5] COVID-19 in Illinois, the U.S. and the world: Timeline of the outbreak. (2020, May 15). Retrieved from https://www.chicagotribune.com/coronavirus/ct-viz-coronavirus-timeline-20200507-uvrzs32nljabrpn6vkzq7m2fpq-story.html
+
+[6] NBC Chicago. (2020, June 09). Here's What to Know About Illinois' 5 Phases of Reopening. Retrieved from https://www.nbcchicago.com/news/coronavirus/heres-what-to-know-about-illinois-5-phases-of-reopening/2286825/
+
+[7] NBC Chicago. (2020, June 26). Illinois Enters Phase 4 of Reopening Plan: Here's What's Changing. Retrieved from https://www.nbcchicago.com/news/local/illinois-enters-phase-4-of-reopening-plan-heres-whats-changing/2295816/
+
+[8] Chicago Tribune staff. (2020, June 01). George Floyd fallout: Here's what happened May 31 in the Chicago area. Retrieved from https://www.chicagotribune.com/news/breaking/ct-george-floyd-chicago-protests-20200531-qghf4l7ysjgl3etxqu3jv6oq6a-story.html
+
+[9] Domestic violence has increased during coronavirus lockdowns. (2020, April 22). Retrieved from https://www.economist.com/graphic-detail/2020/04/22/domestic-violence-has-increased-during-coronavirus-lockdowns
+\newpage
+
+## APPENDIX A: Phases Description and Date Divisions
+1. BEFORE COVID-19 (July 10, 2019 - earliest date recorded in the dataset)
+BEFORE-LOCKDOWN (January 24, 2020 - The first confirmed case in Illinois (a Chicago resident) is reported [4]).
+LOCKDOWN (March 22, 2020 - First full day of strict stay at home order for all individuals except those considered essential workers [5]).
+2. PHASE 2 (May 1, 2020 - Chicago enters phase 2 of its gradual reopening plan, under a modified stay at home order that allows some non-essential businesses to reopen for curb-side pickup and delivery, in addition to allowing residents to resume some outdoor activities while practicing social distancing [6]).
+3. PHASE 3 (June 3, 2020 - Chicago enters phase 3 of its gradual reopening plan, which allows for gatherings of up to 10 and reopened offices, retail stores, bars, barbershops, and churches, all with safety precautions [5]).
+4. PHASE 4 (June 26, 2020 - Chicago enters phase 4 of its gradual reopening plan, which reopens schools, restaurant outdoor seating, and fitness clubs with safety precautions in place [7]).
+
+## APPENDIX B: Step-down 2 Sample Tests of Proportion Outputs
+For each test, our null hypothesis was that the proportion of crimes reported as domestic violence of the periods of interest was the same, while the alternative hypothesis was that the proportion of crimes reported as domestic violence of the periods of interest was different.
+
+###### During-vs-post
+&nbsp;
+```{r 2-proportion-z-tests-during-vs-post}
+prop.test(x=c(4311,2667),n=c(35420, 20266), alternative="two.sided", conf.level=.95)
+```
+###### Post-vs-pre
+```{r 2-proportion-z-tests-post-vs-pre}
+prop.test(x=c(2667, 17919),n=c(2667+17599, 17919+157397), alternative="two.sided", conf.level=.95)
+```
+###### During-vs-pre
+```{r 2-proportion-z-tests-during-vs-pre}
+#lockdown-vs-pre
+prop.test(x=c(4311,17919),n=c(35420, 17919+157397), alternative="two.sided", conf.level=.95)
+```
+
+## APPENDIX C: Logistic Regression Output and Predictor Odd Ratio Confidence Intervals
+
+```{r logistic-var}
+#Creating new dummy variables to use as indicators
+domvio_mut <-domvio_mut %>% 
+  mutate(PHASE = case_when(isbeforecovid == 1 ~ "before_covid",
+                           isbeforelockdown == 1 ~ "before-lockdown",
+                           islockdown == 1 ~ "lockdown",
+                           isphase2 == 1 ~ "phase 2",
+                           isphase3 == 1 ~ "phase 3",
+                           isphase4 == 1 ~ "phase 4"
+  ))
+
+library(broom)
+
+#Create logistic regression model with outcome as domestic violence case yes or no against time frame relative to the pandemic phases
+domvio_mod <- glm(isdomviolence ~ PHASE + as.factor(is9_5), data = domvio_mut, family = "binomial")
+
+#View model output
+tidy(domvio_mod)
+```
+
+We obtained the following 95% confidence intervals for the odd ratios corresponding to each predictor, conditional on all the other predictors in our model:
+
+```{r odds ratio of predicted terms}
+#Transform beta coefficients (logits of the probability of success) into more interpretable odds ratios
+# or_prelockdown <- exp(0.053)
+# or_prelockdown
+# 
+# or_beforelockdown <- exp(0.053)
+# or_beforelockdown
+# 
+# or_lockdown <- exp(0.303)
+# or_lockdown
+# 
+# or_phase2 <- exp(0.105)
+# or_phase2
+# 
+# or_phase3 <- exp(0.301)
+# or_phase3
+# 
+# or_phase4 <- exp(0.261)
+# or_phase4
+# 
+# or_9to5 <- exp(-0.314)
+# or_9to5
+```
+
+```{r confidence intervals for odds ratios}
+# #95% CI for odds ratio for before-lockdown
+# cm <- qnorm(0.975)
+# se_beforelockdown <- 0.020
+# lower_pl <- exp(0.053 - (cm*se_beforelockdown))
+# upper_pl <- exp(0.053 + (cm*se_beforelockdown))
+# lower_pl
+# upper_pl
+# 
+# #95% CI for odds ratio for lockdown
+# se_lockdown <- 0.024
+# lower_l <- exp(0.303 - (cm*se_lockdown))
+# upper_l <- exp(0.303 + (cm*se_lockdown))
+# lower_l
+# upper_l
+# 
+# #95% CI for odds ratio for phase 2
+# se_p2 <- 0.025
+# lower_p2 <- exp(0.105 - (cm*se_p2))
+# upper_p2 <- exp(0.105 + (cm*se_p2))
+# lower_p2
+# upper_p2
+# 
+# #95% CI for odds ratio for phase 3
+# se_p3 <- 0.028
+# lower_p3 <- exp(0.301 - (cm*se_p3))
+# upper_p3 <- exp(0.301 + (cm*se_p3))
+# lower_p3
+# upper_p3
+# 
+# #95% CI for odds ratio for phase 4
+# se_p4 <- 0.036
+# lower_p4 <- exp(0.261 - (cm*se_p4))
+# upper_p4 <- exp(0.261 + (cm*se_p4))
+# lower_p4
+# upper_p4
+# 
+# #95% CI for odds ratio for phase 4
+# #95% CI for odds ratio for is9_5 indicator
+# se_95 <- 0.014
+# lower_95 <- exp(-0.314 - (cm*se_95))
+# upper_95 <- exp(-0.314 + (cm*se_95))
+# lower_95
+# upper_95
+```
+
+BEFORE LOCKDOWN: (1.014, 1.097)
+LOCKDOWN: (1.292, 1.419)
+PHASE 2: (1.058, 1.166)
+PHASE 3: (1.279, 1.427)
+PHASE 4: (1.210, 1.393)
+9-to-5: (0.711, 0.751)
