@@ -278,16 +278,16 @@ domvio_perday<-domvio_perday %>%
   mutate (PROPDOMVIO = DOMVIOCASES/TOTCASES)
 
 ggplot(data = domvio_perday, mapping = aes(x = Var1, y = DOMVIOCASES, colour = period_indicator, group=1)) + geom_line()+ geom_point() +
-  labs(title = "Graph 1: # Daily domestic violence cases
-  remained relatively constant",
+  labs(title = "Graph 1: # Daily domestic violence
+  cases remained relatively constant",
        x = "MM/YYYY",
-       y = "daily cases") + expand_limits(x = 0, y = 0) + scale_x_discrete(breaks = c(20190901, 20191201,20200301, 20200601), label = c("09/2019", "12/2019", "03/2020", "06/2020")) + theme(plot.margin = unit(c(4,0,0,9),"cm"), plot.title = element_text(size=12), legend.position = "none")
+       y = "daily cases") + expand_limits(x = 0, y = 0) + scale_x_discrete(breaks = c(20190901, 20191201,20200301, 20200601), label = c("09/2019", "12/2019", "03/2020", "06/2020")) + theme(plot.margin = unit(c(4,0,0,9),"cm"), plot.title = element_text(size=11), legend.position = "none")
 
 ggplot(data = domvio_perday, mapping = aes(x = Var1, y = TOTCASES, colour = period_indicator, group=1)) + geom_line() + geom_point() + geom_label(x=200, y=1700, label="May 31st BLM protest", show.legend = F, color = "cyan3") +
   labs(title = "Graph 2: Total # daily crime cases dipped
        at the onset of lockdown",
        x = "MM/YYYY"
-       ) + expand_limits(x = 0, y = 0) + scale_x_discrete(breaks = c(20190901, 20191201,20200301, 20200601), label = c("09/2019", "12/2019", "03/2020", "06/2020")) + theme(plot.margin = unit(c(4,0,0,5),"cm"), axis.title.y=element_blank(), plot.title = element_text(size=12))
+       ) + expand_limits(x = 0, y = 0) + scale_x_discrete(breaks = c(20190901, 20191201,20200301, 20200601), label = c("09/2019", "12/2019", "03/2020", "06/2020")) + theme(plot.margin = unit(c(4,0,0,5),"cm"), axis.title.y=element_blank(), plot.title = element_text(size=11))
 ```
 Next, we assessed whether the relationship between these fluctuations in the proportion of domestic violence cases and quarantine status was statistically significant. In order to simplify the analysis, we generalized the 6 phases of the pandemic into 3 periods: pre-lockdown (BEFORE COVID-19 and BEFORE LOCKDOWN), during lockdown (LOCKDOWN and PHASE 2), and post-lockdown (PHASE 3 and PHASE 4). Since there were enough independent observations in each period (n>10 for each cell) to satisfy the model assumptions, we conducted a chi-square test at the $\alpha$  = 0.05 significance level and obtained the following:
 
